@@ -1,0 +1,295 @@
+
+
+if getgenv().exoaimhacks then return getgenv().exoaimhacks end
+
+-- // Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+
+-- // Vars
+local Heartbeat = RunService.Heartbeat
+local LocalPlayer = Players.LocalPlayer
+local CurrentCamera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- // Silent Aim Vars
+getgenv().exoaimhacks = {
+    SilentAimEnabled = true,
+    ShowFOV = false,
+    VisibleCheck = true,
+    TeamCheck = true,
+    FOV = 14,
+    HitChance = 100,
+    Selected = LocalPlayer,
+    TargetPart = "HumanoidRootPart",
+    BlacklistedTeams = {
+        {
+            Team = LocalPlayer.Team,
+            TeamColor = LocalPlayer.TeamColor,
+        },
+    },
+    BlacklistedPlayers = {LocalPlayer},
+    WhitelistedPUIDs = {91318356},
+}
+
+-- // Show FOV
+local circle = Drawing.new("Circle")
+circle.Transparency = 2
+circle.Thickness = 2
+circle.Color = Color3.fromRGB(231, 84, 128)
+circle.NumSides = 100
+circle.Filled = false
+function exoaimhacks.updateCircle()
+    if (circle) then
+        -- // Set Circle Properties
+        circle.Visible = exoaimhacks.ShowFOV
+        circle.Radius = (exoaimhacks.FOV * 3)
+        circle.Position = Vector2.new(Mouse.X, Mouse.Y + GuiService:GetGuiInset().Y)
+
+        -- // Return circle
+        return circle
+    end
+end
+
+-- // Custom Functions
+calcChance = function(percentage)
+    percentage = math.floor(percentage)
+    local chance = math.floor(Random.new().NextNumber(Random.new(), 0, 1) * 100) / 100
+    return chance <= percentage/100
+end
+
+-- // Customisable Checking Functions: Is a part visible
+function exoaimhacks.isPartVisible(Part, PartDescendant)
+    -- // Vars
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local Origin = CurrentCamera.CFrame.Position
+    local _, OnScreen = CurrentCamera:WorldToViewportPoint(Part.Position)
+
+    -- // If Part is on the screen
+    if (OnScreen) then
+        -- // Vars: Calculating if is visible
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {Character, CurrentCamera}
+
+        local Result = Workspace:Raycast(Origin, Part.Position - Origin, raycastParams)
+        local PartHit = Result.Instance
+        local Visible = (not PartHit or PartHit:IsDescendantOf(PartDescendant))
+
+        -- // Return
+        return Visible
+    end
+
+    -- // Return
+    return false
+end
+
+-- // Check teams
+function exoaimhacks.checkTeam(targetPlayerA, targetPlayerB)
+    -- // If player is not on your team
+    if (targetPlayerA.Team ~= targetPlayerB.Team) then
+
+        -- // Check if team is blacklisted
+        for i = 1, #exoaimhacks.BlacklistedTeams do
+            local v = exoaimhacks.BlacklistedTeams
+
+            if (targetPlayerA.Team ~= v.Team and targetPlayerA.TeamColor ~= v.TeamColor) then
+                return true
+            end
+        end
+    end
+
+    -- // Return
+    return false
+end
+
+-- // Check if player is blacklisted
+function exoaimhacks.checkPlayer(targetPlayer)
+    for i = 1, #exoaimhacks.BlacklistedPlayers do
+        local v = exoaimhacks.BlacklistedPlayers[i]
+
+        if (v ~= targetPlayer) then
+            return true
+        end
+    end
+
+    -- // Return
+    return false
+end
+
+-- // Check if player is whitelisted
+function exoaimhacks.checkWhitelisted(targetPlayer)
+    for i = 1, #exoaimhacks.WhitelistedPUIDs do
+        local v = exoaimhacks.WhitelistedPUIDs[i]
+
+        if (targetPlayer.UserId == v) then
+            return true
+        end
+    end
+
+    -- // Return
+    return false
+end
+
+-- // Get the Direction, Normal and Material
+function exoaimhacks.findDirectionNormalMaterial(Origin, Destination, UnitMultiplier)
+    if (typeof(Origin) == "Vector3" and typeof(Destination) == "Vector3") then
+        -- // Handling
+        if (not UnitMultiplier) then UnitMultiplier = 1 end
+
+        -- // Vars
+        local Direction = (Destination - Origin).Unit * UnitMultiplier
+        local RaycastResult = Workspace:Raycast(Origin, Direction)
+
+        if (RaycastResult ~= nil) then
+            local Normal = RaycastResult.Normal
+            local Material = RaycastResult.Material
+
+            return Direction, Normal, Material
+        end
+    end
+
+    -- // Return
+    return nil
+end
+
+-- // Get Character
+function exoaimhacks.getCharacter(Player)
+    return Player.Character
+end
+
+-- // Check Health
+function exoaimhacks.checkHealth(Player)
+    local Character = exoaimhacks.getCharacter(Player)
+    local Humanoid = Character:FindFirstChildWhichIsA("Humanoid")
+
+    local Health = (Humanoid and Humanoid.Health or 0)
+    return Health > 0
+end
+
+-- // Check if silent aim can used
+function exoaimhacks.checkSilentAim()
+    return (exoaimhacks.SilentAimEnabled == true and exoaimhacks.Selected ~= LocalPlayer)
+end
+
+-- // Silent Aim Function
+function exoaimhacks.getClosestPlayerToCursor()
+    -- // Vars
+    local ClosestPlayer = nil
+    local Chance = calcChance(exoaimhacks.HitChance)
+    local ShortestDistance = 1/0
+
+    -- // Chance
+    if (not Chance) then
+        exoaimhacks.Selected = (Chance and LocalPlayer or LocalPlayer)
+
+        return (Chance and LocalPlayer or LocalPlayer)
+    end
+
+    -- // Loop through all players
+    local AllPlayers = Players:GetPlayers()
+    for i = 1, #AllPlayers do
+        local Player = AllPlayers[i]
+        local Character = exoaimhacks.getCharacter(Player)
+
+        if (not exoaimhacks.checkWhitelisted(Player) and exoaimhacks.checkPlayer(Player) and Character and Character:FindFirstChild(exoaimhacks.TargetPart) and exoaimhacks.checkHealth(Player)) then
+            -- // Team Check
+            if (exoaimhacks.TeamCheck and not exoaimhacks.checkTeam(Player, LocalPlayer)) then continue end
+
+            -- // Vars
+            local TargetPart = Character[exoaimhacks.TargetPart]
+            local PartPos, _ = CurrentCamera:WorldToViewportPoint(TargetPart.Position)
+            local Magnitude = (Vector2.new(PartPos.X, PartPos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+
+            -- // Check if is in FOV
+            if (circle.Radius > Magnitude and Magnitude < ShortestDistance) then
+                -- // Check if Visible
+                if (exoaimhacks.VisibleCheck and not exoaimhacks.isPartVisible(TargetPart, Character)) then continue end
+
+                -- //
+                ClosestPlayer = Player
+                ShortestDistance = Magnitude
+            end
+        end
+    end
+
+    -- // End
+    exoaimhacks.Selected = (Chance and ClosestPlayer or LocalPlayer)
+end
+
+-- // Heartbeat Function
+Heartbeat:Connect(function()
+    exoaimhacks.updateCircle()
+    exoaimhacks.getClosestPlayerToCursor()
+end)
+
+return exoaimhacks
+
+--[[
+Examples:
+
+--// Namecall Version // --
+-- // Metatable Variables
+local mt = getrawmetatable(game)
+local backupindex = mt.__index
+setreadonly(mt, false)
+
+-- // Load Silent Aim
+local exoaimhacks = loadstring(game:HttpGetAsync("", true))()
+
+-- // Hook
+mt.__namecall = newcclosure(function(...)
+    -- // Vars
+    local args = {...}
+    local method = getnamecallmethod()
+
+    -- // Checks
+    if (method == "FireServer") then
+        if (args[1].Name == "RemoteNameHere") then
+            -- change args
+
+            -- // Return changed arguments
+            return backupnamecall(unpack(args))
+        end
+    end
+
+    -- // Return
+    return backupnamecall(...)
+end)
+
+-- // Revert Metatable readonly status
+setreadonly(mt, true)
+
+-- // Index Version // --
+-- // Metatable Variables
+local mt = getrawmetatable(game)
+local backupindex = mt.__index
+setreadonly(mt, false)
+
+-- // Load Silent Aim
+local exoaimhacks = loadstring(game:HttpGetAsync("", true))()
+
+-- // Hook
+mt.__index = newcclosure(function(t, k)
+    -- // Check if it trying to get our mouse's hit or target
+    if (t:IsA("Mouse") and (k == "Hit" or k == "Target")) then
+        -- // If we can use the silent aim
+        if (exoaimhacks.checkSilentAim()) then
+            -- // Vars
+            local CPlayer = exoaimhacks.Selected
+            local Character = exoaimhacks.getCharacter(CPlayer) -- // good practice to use this to get the character
+
+            -- // Return modded val
+            return (k == "Hit" and Character.Head.CFrame or Character.Head)
+        end
+    end
+
+    -- // Return
+    return backupindex(t, k)
+end)
+
+-- // Revert Metatable readonly status
+setreadonly(mt, true)
+]]
